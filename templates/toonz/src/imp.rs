@@ -119,7 +119,7 @@ pub trait Impl {
 
 		if needs_chapters {
 			manga.chapters = Some(
-				chapter_items(params, &page)?
+				chapter_items(params, &page, &manga.key)?
 					.into_iter()
 					.map(|chapter| chapter.into_chapter(params, &manga.key))
 					.collect(),
@@ -138,7 +138,7 @@ pub trait Impl {
 					bail!("Chapter not found");
 				};
 				let page = series_page(params, &manga.key)?;
-				let key = chapter_items(params, &page)?
+				let key = chapter_items(params, &page, &manga.key)?
 					.into_iter()
 					.find(|item| item.number() == Some(number))
 					.map(|item| String::from(item.key()))

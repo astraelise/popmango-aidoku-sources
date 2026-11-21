@@ -1,7 +1,7 @@
 use crate::{
 	Params,
 	models::{ChapterItem, ChapterList, ReaderImage},
-	settings,
+	settings, transport,
 };
 use aidoku::{
 	ContentRating, Manga, MangaPageResult, MangaStatus, Result, Viewer,
@@ -11,7 +11,7 @@ use aidoku::{
 		uri::{QueryParameters, encode_uri_component},
 	},
 	imports::{
-		html::{Document, Element, ElementList},
+		html::{Document, Element, ElementList, Html},
 		net::{Request, Response},
 	},
 	prelude::*,
@@ -128,7 +128,8 @@ impl SearchParams {
 		}
 		query.push_encoded("page", Some(&page.to_string()));
 		let url = format!("{}/{}?{query}", params.base_url, params.catalog);
-		let document = check(self.content.request(&url)?.send()?)?.get_html()?;
+		let body = transport::get(params, &url, Some(&self.content))?;
+		let document = Html::parse_with_url(body, &url)?;
 		Ok(MangaPageResult {
 			entries: cards(params, document.select("img[data-cover]")),
 			has_next_page: document
@@ -273,7 +274,8 @@ pub fn chapter_url(params: &Params, manga_key: &str, key: &str) -> String {
 
 pub fn series_page(params: &Params, key: &str) -> Result<Document> {
 	let url = format!("{}/{}/{key}", params.base_url, params.series_path);
-	Ok(check(Request::get(url)?.send()?)?.get_html()?)
+	let (url, body) = transport::series(params, &url)?;
+	Ok(Html::parse_with_url(body, &url)?)
 }
 
 pub fn comic_id(page: &Document) -> Result<String> {
@@ -282,15 +284,19 @@ pub fn comic_id(page: &Document) -> Result<String> {
 		.ok_or_else(|| error!("Series not found"))
 }
 
-pub fn chapter_items(params: &Params, page: &Document) -> Result<Vec<ChapterItem>> {
+pub fn chapter_items(
+	params: &Params,
+	page: &Document,
+	manga_key: &str,
+) -> Result<Vec<ChapterItem>> {
 	let url = format!(
 		"{}/api/comics/{}/chapters",
 		params.base_url,
 		comic_id(page)?
 	);
-	Ok(check(Request::get(url)?.send()?)?
-		.get_json_owned::<ChapterList>()?
-		.chapters)
+	let series_url = format!("{}/{}/{manga_key}", params.base_url, params.series_path);
+	let body = transport::chapters(params, &url, &series_url)?;
+	Ok(serde_json::from_str::<ChapterList>(&body)?.chapters)
 }
 
 // The chapter route's reader data, without the page around it.
@@ -299,13 +305,10 @@ pub fn reader_images(
 	manga_key: &str,
 	chapter_key: &str,
 ) -> Result<Option<Vec<ReaderImage>>> {
-	let response = Request::get(chapter_url(params, manga_key, chapter_key))?
-		.header("RSC", "1")
-		.send()?;
-	if response.status_code() == 404 {
+	let url = chapter_url(params, manga_key, chapter_key);
+	let Some(body) = transport::reader(params, &url)? else {
 		return Ok(None);
-	}
-	let body = check(response)?.get_string()?;
+	};
 	// The first "images" array that reads as pages; another can come first.
 	let marker = r#""images":"#;
 	Ok(Some(

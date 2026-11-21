@@ -2,13 +2,15 @@
 title: Toonz template (en.toonz, en.toonx, en.lewdmanhwa)
 type: subsystem
 created: 2026-11-19
-updated: 2026-11-20
+updated: 2026-11-21
 sources:
   - code: templates/toonz/src/lib.rs
   - code: templates/toonz/src/imp.rs
   - code: templates/toonz/src/helpers.rs
   - code: templates/toonz/src/home.rs
   - code: templates/toonz/src/models.rs
+  - code: templates/toonz/src/transport.rs
+  - code: scripts/tests/test_toonz_transport.mjs
   - code: templates/toonz/src/settings.rs
   - code: templates/toonz/src/test.rs
   - code: sources/en.toonz/src/lib.rs
@@ -51,8 +53,7 @@ Everything below was probed live on 2026-11-19 unless marked.
 - Pages: the chapter route with `RSC: 1`, reading the `"images"` array (`{filename}` under
   `/uploads/`), as keiyoushi's client does.
 - Home: Toonz reads `/manhwa`, `/manga` and the list view, Toonx `/` and the list view, and
-  LewdManhwa `/home` (hero slides and Latest Updates; its Trending Now repeats the slides), each
-  in one `send_all`.
+  LewdManhwa `/home` (hero slides and Latest Updates; its Trending Now repeats the slides), with Toonz publishing rows as each page loads; the other two use one `send_all`.
 
 > ⚠️ LewdManhwa's hero renders only its first slide's cover (a `<picture>`); the other slides
 > arrive with an empty cover box, so a slide takes its cover from the same title's card on the
@@ -101,8 +102,8 @@ Everything below was probed live on 2026-11-19 unless marked.
 > in the server HTML, so they cannot be rows.
 
 > ⚠️ Toonz series and chapter pages answer `403` with `cf-mitigated: challenge`, a Cloudflare
-> managed challenge that the app solves in a web view, as for merged sources; the sandbox
-> cannot. `helpers.rs` `check` turns an unsolved challenge into "The site answered HTTP 403"
+> managed challenge observed in the earlier sandbox; automatic recovery in the app was not
+> established. `helpers.rs` `check` turns an unsolved challenge into "The site answered HTTP 403"
 > rather than a misleading "Series not found". Toonx and LewdManhwa pages answer the sandbox.
 
 > ⚠️ The app appends a source's `Cookie` header after its stored cookies, so the Cloudflare
@@ -115,3 +116,38 @@ Genres are static per consumer, generated from each site's `/api/genres` (Toonz 
 whether Toonz's `/api/genres` answers through Cloudflare). The live
 `details_chapters_and_pages` test fails on Toonz in the sandbox on the challenge page and needs
 an in-app check; Toonx and LewdManhwa run their whole suites.
+
+## Toonz request timeouts
+
+Device logs for Toonz v4 showed `NSURLErrorDomain -1001` on `/manga`, `/manhwa`, and
+`/comics?sort=latest&page=1`, while both Safari and the app's browser loaded the site.
+These logs establish plain-request timeouts, not a refused HTTP response.
+
+`Params::browser_requests` opts only `en.toonz` into same-origin asynchronous browser
+requests (`templates/toonz/src/transport.rs`). A local blank document supplies
+the origin without waiting for a remote navigation. Readiness polling is bounded; XHR has
+a 15-second timeout and Rust polls for at most 20 iterations. Status and body remain separate,
+including the reader's 404 fallback. Home and search write the effective `reader_prefs`
+cookie before sending, retaining the existing setting/filter override behavior. Toonz home
+publishes partial components after each page; failed pages do not discard successful rows.
+
+Native WebKit probes returned HTTP 200 for both type home pages, browse, and text search
+on 2026-11-21. The first browser-request build still received 403 for series pages; real
+navigation was needed to establish the title session.
+
+> ⚠️ Toonz series pages must navigate in the browser and wait for the parsed document's
+> `data-comic-id` marker. `templates/toonz/src/transport.rs` returns the redirected URL with
+> the HTML. Navigation is limited to 25 polling iterations. An API or reader-data 403 gets
+> one normal navigation to its series/chapter before one retry, never recursive retries.
+
+A fresh, non-persistent native WebKit session loaded Solo Leveling's title, its chapter API
+(263 chapters), and chapter 2's reader data (26 image filenames). The user then installed v6
+and confirmed it works in Aidoku, following their earlier confirmation of faster home loading.
+This is device confirmation of the reported fix, not a comprehensive multi-title benchmark.
+
+`node --test scripts/tests/test_toonz_transport.mjs` covers asynchronous request setup,
+preferences, RSC/404, network errors, timeout, cancellation, refused/missing-marker pages,
+document readiness, redirect URL preservation, and chapter-image readiness. The existing six
+template parser tests and three Toonz `review_` tests pass. The full Toonz live suite still
+fails with `JsError(MissingResult)` because the Rust runner stubs WebView; it cannot replace
+native WebKit and device evidence for this path.

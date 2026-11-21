@@ -16,6 +16,7 @@ impl Impl for Toonx {
 
 	fn params(&self) -> Params {
 		Params {
+			browser_requests: false,
 			base_url: BASE_URL,
 			catalog: "comics",
 			series_path: "comic",

@@ -1,13 +1,14 @@
 use crate::{
 	Params, Row,
 	helpers::{Content, age, card, cards, check, rating, series_path, status},
+	transport,
 };
 use aidoku::{
 	AidokuError, Chapter, HomeComponent, HomeComponentValue, HomeLayout, HomePartialResult, Link,
 	Listing, ListingKind, Manga, MangaWithChapter, Result,
 	alloc::{String, Vec, format},
 	imports::{
-		html::{Document, Element},
+		html::{Document, Element, Html},
 		net::Request,
 		std::{current_date, send_partial_result},
 	},
@@ -265,23 +266,50 @@ pub fn get_home(params: &Params) -> Result<HomeLayout> {
 	}));
 
 	let content = Content::new(params);
-	let requests = params
-		.home_pages
-		.iter()
-		.map(|path| content.request(&format!("{}{path}", params.base_url)))
-		.collect::<Result<Vec<_>>>()?;
 	let mut failure = None;
-	let pages: Vec<Option<Document>> = Request::send_all(requests)
-		.into_iter()
-		.map(|response| {
-			response
-				.map_err(AidokuError::from)
-				.and_then(check)
-				.and_then(|response| Ok(response.get_html()?))
-				.map_err(|error| failure = Some(error))
-				.ok()
-		})
-		.collect();
+	let pages: Vec<Option<Document>> = if params.browser_requests {
+		let mut pages: Vec<Option<Document>> = core::iter::repeat_with(|| None)
+			.take(params.home_pages.len())
+			.collect();
+		for (index, path) in params.home_pages.iter().enumerate() {
+			let url = format!("{}{path}", params.base_url);
+			let page = transport::get(params, &url, Some(&content))
+				.and_then(|body| Ok(Html::parse_with_url(body, &url)?));
+			match page {
+				Ok(page) => pages[index] = Some(page),
+				Err(error) => {
+					failure = Some(error);
+				}
+			}
+			for (title, row) in params.home_rows {
+				if let Some(value) = fill(params, *row, &pages) {
+					send_partial_result(&HomePartialResult::Component(HomeComponent {
+						title: Some(String::from(*title)),
+						subtitle: None,
+						value,
+					}));
+				}
+			}
+		}
+		pages
+	} else {
+		let requests = params
+			.home_pages
+			.iter()
+			.map(|path| content.request(&format!("{}{path}", params.base_url)))
+			.collect::<Result<Vec<_>>>()?;
+		Request::send_all(requests)
+			.into_iter()
+			.map(|response| {
+				response
+					.map_err(AidokuError::from)
+					.and_then(check)
+					.and_then(|response| Ok(response.get_html()?))
+					.map_err(|error| failure = Some(error))
+					.ok()
+			})
+			.collect()
+	};
 	// The final layout removes failed-section placeholders.
 	let components: Vec<_> = params
 		.home_rows

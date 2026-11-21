@@ -19,6 +19,7 @@ impl Impl for ToonzTo {
 
 	fn params(&self) -> Params {
 		Params {
+			browser_requests: true,
 			base_url: BASE_URL,
 			catalog: "comics",
 			series_path: "comic",

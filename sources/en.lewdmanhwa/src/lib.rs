@@ -16,6 +16,7 @@ impl Impl for LewdManhwa {
 
 	fn params(&self) -> Params {
 		Params {
+			browser_requests: false,
 			base_url: BASE_URL,
 			catalog: "webtoons",
 			series_path: "webtoon",

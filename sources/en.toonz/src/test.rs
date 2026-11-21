@@ -293,3 +293,8 @@ fn details_chapters_and_pages() {
 		.unwrap();
 	assert!(!pages.is_empty());
 }
+
+#[aidoku_test]
+fn review_browser_requests_are_enabled_for_toonz() {
+	assert!(ToonzTo.params().browser_requests);
+}

@@ -12,6 +12,7 @@ mod models;
 mod settings;
 #[cfg(test)]
 mod test;
+mod transport;
 
 pub use imp::Impl;
 
@@ -32,6 +33,7 @@ pub enum Row {
 }
 
 pub struct Params {
+	pub browser_requests: bool,
 	pub base_url: &'static str,
 	pub catalog: &'static str,
 	// The path that resolves every series and chapter.

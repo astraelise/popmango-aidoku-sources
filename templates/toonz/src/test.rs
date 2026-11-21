@@ -13,6 +13,7 @@ use aidoku::{
 use aidoku_test::aidoku_test;
 
 const TOONZ: Params = Params {
+	browser_requests: false,
 	base_url: "https://toonz.to",
 	catalog: "comics",
 	series_path: "comic",
@@ -24,6 +25,7 @@ const TOONZ: Params = Params {
 };
 
 const LEWD: Params = Params {
+	browser_requests: false,
 	base_url: "https://lewdmanhwa.com",
 	catalog: "webtoons",
 	series_path: "webtoon",
